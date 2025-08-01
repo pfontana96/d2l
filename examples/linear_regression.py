@@ -17,12 +17,13 @@ class LinearRegression(nn.Module):
 
         super().__init__()
 
-        self.w = torch.normal(0, sigma, (input_dim, 1), requires_grad=True)
-        self.b = torch.zeros(1, requires_grad=True)
+        self.net = nn.LazyLinear(1, bias=True)
+        self.net.weight.data.normal_(0, sigma)
+        self.net.bias.data.zero_()
 
     def forward(self, x):
-        return torch.matmul(x, self.w) + self.b
-    
+        return self.net(x)
+
 
 class SyntheticDataset(Dataset):
 
@@ -49,12 +50,14 @@ def main():
     dataset = SyntheticDataset(true_w, true_b, num_samples=1000, noise_std_dev=0.1)
 
     model = LinearRegression(input_dim=2)
-    optimizer = torch.optim.SGD([model.w, model.b], lr=0.01)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
     trainer = Trainer(max_epochs=400)
     trainer.fit(model, data=dataset, optimizer=optimizer, loss_fn=nn.MSELoss())
 
-    logger.info(f"Estimated weights: {model.w.data}, Estimated bias: {model.b.data}, True weights: {true_w}, True bias: {true_b}")
+    logger.info(
+        f"Estimated weights: {model.net.weight.data.tolist()}, estimated bias: {model.net.bias.data.tolist()} True weights: {true_w.tolist()}, True bias: {true_b.tolist()}"
+    )
 
 
 if __name__ == "__main__":
