@@ -153,3 +153,9 @@ class YOLOv1(nn.Module):
                 (torch.sqrt(y_true[..., 2]) - torch.sqrt(y_pred[..., 2])) ** 2 + (torch.sqrt(y_true[..., 3]) - torch.sqrt(y_pred[..., 3])) ** 2
             )
         )
+
+        # Confidence loss
+        confidence_loss = torch.sum(
+            object_presence_mask * ((y_true[..., 4] - y_pred[..., 4]) ** 2) +
+            lambda_noobj * object_absence_mask * (y_pred[..., 4] ** 2)
+        )
