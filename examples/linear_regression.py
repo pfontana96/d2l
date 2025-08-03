@@ -4,8 +4,8 @@ from torch import nn
 import torch
 from torch.utils.data import Dataset
 
-from d2l_pep.trainer import Trainer
-from d2l_pep.log import set_root_logger
+from grund.trainer import Trainer
+from grund.log import set_root_logger
 
 
 logger = logging.getLogger(__name__)

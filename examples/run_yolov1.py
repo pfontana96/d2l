@@ -9,9 +9,10 @@ from pydantic import BaseModel, model_validator
 import torchvision.transforms.v2 as transforms
 from torchvision.datasets import ImageNet
 
-from d2l_pep.log import set_root_logger
+from grund.log import set_root_logger
+from grund.models.yolo import get_yolo
 
-from yolo_v1.model import YOLOv1
+# from yolo_v1.model import YOLOv1
 
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ def main():
 
     args = parse_args()
 
+    YOLOv1 = get_yolo("v1")
     model = YOLOv1()
 
     if args.action == "train":

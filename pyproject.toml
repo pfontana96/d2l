@@ -8,9 +8,9 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "d2l_pep"
+name = "grund"
 version = "0.1.0"
-description = "Personal package for ML training using D2L book"
+description = "A minimal, machine learning toolkit built for learning, clarity, and reusability."
 readme = "README.md"
 authors = [
     { name = "Pedro Fontana", email = "pedro.fontana.1996@gmail.com" }

@@ -140,7 +140,15 @@ class YOLOv1(nn.Module):
         :param targets: Ground truth targets
         :return: Computed loss value
         """
-        # Each bbox consists of 5 values: x, y, w, h, confidence
+        # As stated in the paper:
+        # Each gridcell predicts x, y, w, h, confidence, C1, ..., Cn 
+        # where:
+        #       confidence = P(obj) * IOU_pred_true
+        #       Ci = P(class | obj)
+        # At test time, we multiply class conditional probability and the box confidence to get class-based confidence
+        # confidence on Ci = P(class | obj) * box's confidence = P(class | obj) * P(obj) * IOU_pred_true = P(class) * IOU_pred_true
+
+        # Get ground truth object mask
         object_presence_mask = y_true[..., 4] > 0
         object_absence_mask = ~object_presence_mask
 
