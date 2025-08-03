@@ -1,26 +1,42 @@
 import torch
 
 
-def xywh2xyxy(bbox: torch.Tensor) -> torch.Tensor:
+def xywh2xyxy(bboxes: torch.Tensor) -> torch.Tensor:
     """
-    Convert bounding box from (x, y, width, height) format to (x1, y1, x2, y2) format.
+    Convert bounding boxes from (x, y, width, height) format to (x1, y1, x2, y2) format.
 
     Args:
         bbox (torch.Tensor): Bounding box in (x, y, width, height) format.
     Returns:
         torch.Tensor: Bounding box in (x1, y1, x2, y2) format.
     """
+    assert bboxes.ndim == 2, f"Expected `bboxes` dimension to be 2, got '{bboxes.ndim}'"
+    assert bboxes.shape[1] == 4, f"Expected `bboxes` shape to be (N, 4), got '{bboxes.shape}'"
 
-    new_bbox = torch.empty_like(bbox, dtype=torch.float32)
-    xy = new_bbox[..., :2]  # centers
-    wh = new_bbox[..., 2:] / 2  # half width-height
-    new_bbox[..., :2] = xy - wh  # top left xy
-    new_bbox[..., 2:] = xy + wh  # bottom right xy
+    new_bbox = torch.empty_like(bboxes, dtype=torch.float32)
+    xy = bboxes[:, :2]  # centers
+    wh = bboxes[:, 2:] / 2  # half width-height
+    new_bbox[:, :2] = xy - wh  # top left xy
+    new_bbox[:, 2:] = xy + wh  # bottom right xy
 
     return new_bbox
 
 
-def iou(bbox_a_xyxy: torch.Tensor, bbox_b_xyxy: torch.Tensor):
+def compute_iou(bbox_a_xyxy: torch.Tensor, bbox_b_xyxy: torch.Tensor) -> torch.Tensor:
 
-    xyA = torch.max(bbox_a_xyxy[:2], bbox_b_xyxy[:2])
-    xyB = torch.min(bbox_a_xyxy[3:], bbox_b_xyxy[3:])
+    inter_xy_min = torch.max(bbox_a_xyxy[:2], bbox_b_xyxy[:2])
+    inter_xy_max = torch.min(bbox_a_xyxy[3:], bbox_b_xyxy[3:])
+
+    inter_area = torch.max(torch.zeros(2), inter_xy_max - inter_xy_min)
+    inter_area = inter_area[0] * inter_area[1]
+
+    eps = 1e-6
+    if inter_area < eps:
+        return torch.tensor(0.0, dtype=torch.float32)
+
+    a_area = (bbox_a_xyxy[2] - bbox_a_xyxy[0]) * (bbox_a_xyxy[3] - bbox_a_xyxy[1])
+    b_area = (bbox_b_xyxy[2] - bbox_b_xyxy[0]) * (bbox_b_xyxy[3] - bbox_b_xyxy[1])
+
+    union = a_area + b_area - inter_area + eps
+
+    return inter_area / union

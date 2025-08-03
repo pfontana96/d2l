@@ -7,6 +7,8 @@ import torch
 from torch import nn
 import torchvision.transforms.v2 as transforms
 
+from grund.utils.math import xywh2xyxy, compute_iou
+
 
 class _ConvLayerConfig(BaseModel):
 
@@ -133,13 +135,17 @@ class YOLOv1(nn.Module):
         return self._net(x).reshape(-1, 7, 7, self._boxes_per_cell * 5 + self._num_classes)
     
     @staticmethod
-    def loss(y_pred: torch.Tensor, y_true: torch.Tensor, lambda_coord: float, lambda_noobj: float) -> torch.Tensor:
+    def loss(
+        y_pred: torch.Tensor, y_true: torch.Tensor, lambda_coord: float, lambda_noobj: float,
+        number_of_gridcells: int, boxes_per_cell: int, number_of_classes: int
+    ) -> torch.Tensor:
         """
         Compute the loss for YOLOv1 predictions.
         :param predictions: Model predictions
         :param targets: Ground truth targets
         :return: Computed loss value
         """
+        assert y_pred.shape == y_true.shape == (number_of_gridcells, number_of_gridcells, 5*boxes_per_cell + number_of_classes)
         # As stated in the paper:
         # Each gridcell predicts x, y, w, h, confidence, C1, ..., Cn 
         # where:
@@ -153,17 +159,12 @@ class YOLOv1(nn.Module):
         object_absence_mask = ~object_presence_mask
 
         # X and Y loss
-        xy_loss = torch.sum(object_presence_mask * ((y_true[..., 0] - y_pred[..., 0]) ** 2 + (y_true[..., 1] - y_pred[..., 1]) ** 2))
+        xy_loss = ((y_true[object_presence_mask][:2] - y_pred[object_presence_mask][:2]) ** 2).sum(dim=-1).sum()
 
         # Width and Height loss
-        wh_loss = torch.sum(
-            object_presence_mask * (
-                (torch.sqrt(y_true[..., 2]) - torch.sqrt(y_pred[..., 2])) ** 2 + (torch.sqrt(y_true[..., 3]) - torch.sqrt(y_pred[..., 3])) ** 2
-            )
-        )
+        eps = 1e-6
+        wh_loss = (torch.sqrt(y_true[object_presence_mask][2:] - y_pred[object_presence_mask][2:]) ** 2).sum(dim=-1).sum()
 
         # Confidence loss
-        confidence_loss = torch.sum(
-            object_presence_mask * ((y_true[..., 4] - y_pred[..., 4]) ** 2) +
-            lambda_noobj * object_absence_mask * (y_pred[..., 4] ** 2)
-        )
+        confidence_loss = ((y_true[object_presence_mask][4] - y_pred[object_presence_mask][4]) ** 2 +
+            lambda_noobj * (y_pred[object_absence_mask][4] ** 2)).sum()
