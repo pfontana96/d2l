@@ -24,19 +24,25 @@ def xywh2xyxy(bboxes: torch.Tensor) -> torch.Tensor:
 
 def compute_iou(bbox_a_xyxy: torch.Tensor, bbox_b_xyxy: torch.Tensor) -> torch.Tensor:
 
-    inter_xy_min = torch.max(bbox_a_xyxy[:2], bbox_b_xyxy[:2])
-    inter_xy_max = torch.min(bbox_a_xyxy[3:], bbox_b_xyxy[3:])
+    assert bbox_a_xyxy.ndim == 2, f"Expected `bbox_a_xyxy` dimension to be 2, got '{bbox_a_xyxy.ndim}'"
+    assert bbox_b_xyxy.ndim == 2, f"Expected `bbox_b_xyxy` dimension to be 2, got '{bbox_b_xyxy.ndim}'"
 
-    inter_area = torch.max(torch.zeros(2), inter_xy_max - inter_xy_min)
-    inter_area = inter_area[0] * inter_area[1]
+    inter_xy_min = torch.max(bbox_a_xyxy[:, :2], bbox_b_xyxy[:, :2])
+    inter_xy_max = torch.min(bbox_a_xyxy[:, 2:], bbox_b_xyxy[:, 2:])
+    
+    intersections = torch.max(torch.zeros(2), inter_xy_max - inter_xy_min)
+    intersections = intersections[:, 0] * intersections[:, 1]
 
     eps = 1e-6
-    if inter_area < eps:
-        return torch.tensor(0.0, dtype=torch.float32)
 
-    a_area = (bbox_a_xyxy[2] - bbox_a_xyxy[0]) * (bbox_a_xyxy[3] - bbox_a_xyxy[1])
-    b_area = (bbox_b_xyxy[2] - bbox_b_xyxy[0]) * (bbox_b_xyxy[3] - bbox_b_xyxy[1])
+    a_area = (bbox_a_xyxy[:, 2] - bbox_a_xyxy[:, 0]) * (bbox_a_xyxy[:, 3] - bbox_a_xyxy[:, 1])
+    b_area = (bbox_b_xyxy[:, 2] - bbox_b_xyxy[:, 0]) * (bbox_b_xyxy[:, 3] - bbox_b_xyxy[:, 1])
 
-    union = a_area + b_area - inter_area + eps
+    unions = a_area + b_area - intersections + eps
 
-    return inter_area / union
+    iou = intersections / unions
+
+    # Special case with no intersection
+    iou[intersections < eps] = 0.0
+
+    return iou

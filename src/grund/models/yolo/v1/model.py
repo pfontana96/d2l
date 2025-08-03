@@ -141,9 +141,10 @@ class YOLOv1(nn.Module):
     ) -> torch.Tensor:
         """
         Compute the loss for YOLOv1 predictions.
-        :param predictions: Model predictions
-        :param targets: Ground truth targets
-        :return: Computed loss value
+        
+        Args:
+        y_pred (torch.Tensor): Tensor of predictions with shape (7, 7, B * 5 + C)
+        y_true (torch.Tensor): Tensor of targets with shape (7, 7, B * 5 + C)
         """
         assert y_pred.shape == y_true.shape == (number_of_gridcells, number_of_gridcells, 5*boxes_per_cell + number_of_classes)
         # As stated in the paper:
@@ -158,12 +159,20 @@ class YOLOv1(nn.Module):
         object_presence_mask = y_true[..., 4] > 0
         object_absence_mask = ~object_presence_mask
 
+        # Assume that gt box is first one
+        gt_bboxes = y_true[object_presence_mask][:5]
+
+        # compute IOU for predictions to find responsible predictor
+        # TODO: MOdif iou so that it can broadcast, as we have N,1 gt boxes (one per each image with a detection)
+        # but N, B predictor boxes and we need to find the responsable predictor box for each n in N
+        pred_bboxes_xyxy = xywh2xyxy(y_pred[object_presence_mask].reshape(-1, 5), gt)
+
         # X and Y loss
-        xy_loss = ((y_true[object_presence_mask][:2] - y_pred[object_presence_mask][:2]) ** 2).sum(dim=-1).sum()
+        xy_loss = ((y_true[object_presence_mask][:2] - y_pred[object_presence_mask][:2]) ** 2).sum()
 
         # Width and Height loss
         eps = 1e-6
-        wh_loss = (torch.sqrt(y_true[object_presence_mask][2:] - y_pred[object_presence_mask][2:]) ** 2).sum(dim=-1).sum()
+        wh_loss = (torch.sqrt(y_true[object_presence_mask][2:] - y_pred[object_presence_mask][2:]) ** 2).sum()
 
         # Confidence loss
         confidence_loss = ((y_true[object_presence_mask][4] - y_pred[object_presence_mask][4]) ** 2 +
