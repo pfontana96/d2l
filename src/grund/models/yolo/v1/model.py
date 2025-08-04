@@ -135,6 +135,61 @@ class YOLOv1(nn.Module):
         return self._net(x).reshape(-1, 7, 7, self._boxes_per_cell * 5 + self._num_classes)
     
     @staticmethod
+    def prediction_to_world(tensor: torch.Tensor, width: int, height: int, B: int, C: int) -> torch.Tensor:
+        """
+        Interprets the network's output for usage
+
+        Args:
+            tensor (torch.Tensor): Network output tensor of shape (7, 7, B * 5 + C) where the last dimension stands for
+                bounding boxes, defined as: x, y, sqrt(w), sqrt(h), P(obj), P(Ci|obj). Bounding box's center is given
+                w.r.t cell's origin while width and height are given w.r.t the input image size. `B` is the number of
+                bounding boxes predicted per cell and `C` is the number of classes.
+
+            W (int): Input's image width.
+            H (int): Input's image height.
+            B (int): Number of bounding boxes per cell.
+            C (int): Number of classes
+
+        Returns:
+            detections (torch.Tensor): Tensor of shape (49, B, 4 + C) where last dimension stands for the bounding
+            boxes coordinates in defined in the input's image grid and the probabilities of each class, i.e.
+            (x1, y1, x2, y2, P(C1), ..., P(Cc)).
+        """
+        assert tensor.shape == (7, 7, B * 5 + C), f"Expected input tensor shape to be (7, 7, B * 5 + C), i.e. {(7, 7, B * 5 + C)}, got {tensor.shape}"  # noqa
+
+        output = torch.empty(49, B, 4 + C, device=tensor.device)
+
+        predicted_bboxes_w_conf = tensor[..., :(B * 5)].reshape(7, 7, B, 5)
+        class_conditional_probs = tensor[..., (B * 5):] # shape: (7, 7, C)
+
+        class_probs = predicted_bboxes_w_conf[..., 4].unsqueeze(dim=-1) * class_conditional_probs.unsqueeze(dim=-2)
+        class_probs = class_probs.reshape(49, B, C)
+
+        cell_width = width / 7.0
+        cell_height = height / 7.0
+
+        xx, yy = torch.meshgrid(
+            torch.arange(7, device=tensor.device), torch.arange(7, device=tensor.device), indexing="xy"
+        )
+
+        # Extract bbox components
+        x =  cell_width * (predicted_bboxes_w_conf[..., 0] + xx.unsqueeze(-1))
+        y = cell_height * (predicted_bboxes_w_conf[..., 1] + yy.unsqueeze(-1))
+        w = (predicted_bboxes_w_conf[..., 2] ** 2) * width  # network output is square root of width wrt input width
+        h = (predicted_bboxes_w_conf[..., 3] ** 2) * height  # network output is square root of height wrt input height
+
+        # Convert to x1, y1, x2, y2
+        x1 = x - w / 2
+        y1 = y - h / 2
+        x2 = x + w / 2
+        y2 = y + h / 2
+
+        output[..., :4] = torch.stack((x1, y1, x2, y2), dim=-1).reshape(49, B, 4)
+        output[..., 4:] = class_probs
+
+        return output
+    
+    @staticmethod
     def loss(
         y_pred: torch.Tensor, y_true: torch.Tensor, lambda_coord: float, lambda_noobj: float,
         number_of_gridcells: int, boxes_per_cell: int, number_of_classes: int
@@ -148,7 +203,7 @@ class YOLOv1(nn.Module):
         """
         assert y_pred.shape == y_true.shape == (number_of_gridcells, number_of_gridcells, 5*boxes_per_cell + number_of_classes)
         # As stated in the paper:
-        # Each gridcell predicts x, y, w, h, confidence, C1, ..., Cn 
+        # Each gridcell predicts x, y, sqrt(w), sqrt(h), confidence, C1, ..., Cn 
         # where:
         #       confidence = P(obj) * IOU_pred_true
         #       Ci = P(class | obj)
@@ -159,21 +214,31 @@ class YOLOv1(nn.Module):
         object_presence_mask = y_true[..., 4] > 0
         object_absence_mask = ~object_presence_mask
 
-        # Assume that gt box is first one
-        gt_bboxes = y_true[object_presence_mask][:5]
+        # Assume that cell ground truth box is first one
+        gt_bboxes_xywh = y_true[object_presence_mask][:4]
+        gt_bboxes_xyxy = xywh2xyxy(gt_bboxes_xywh)
 
         # compute IOU for predictions to find responsible predictor
         # TODO: MOdif iou so that it can broadcast, as we have N,1 gt boxes (one per each image with a detection)
         # but N, B predictor boxes and we need to find the responsable predictor box for each n in N
-        pred_bboxes_xyxy = xywh2xyxy(y_pred[object_presence_mask].reshape(-1, 5), gt)
+        
+        pred_bboxes_xywhc = y_pred[object_presence_mask].reshape(gt_bboxes_xyxy.shape[0], -1, 5)
+        pred_bboxes_xywh = pred_bboxes_xywhc[..., :4]
+        pred_bboxes_xyxy = xywh2xyxy(pred_bboxes_xywh)
 
-        # X and Y loss
-        xy_loss = ((y_true[object_presence_mask][:2] - y_pred[object_presence_mask][:2]) ** 2).sum()
+        ious = torch.empty_like(pred_bboxes_xyxy)
+        for i, (gt_bbox, pred_bboxes) in enumerate(zip(gt_bboxes_xyxy, pred_bboxes_xyxy)):
+            ious[i, ...] = compute_iou(pred_bboxes, gt_bbox)
 
-        # Width and Height loss
-        eps = 1e-6
-        wh_loss = (torch.sqrt(y_true[object_presence_mask][2:] - y_pred[object_presence_mask][2:]) ** 2).sum()
+        print(f"DEBUG: Computed IOUs:\n{ious.tolist()}")
 
-        # Confidence loss
-        confidence_loss = ((y_true[object_presence_mask][4] - y_pred[object_presence_mask][4]) ** 2 +
-            lambda_noobj * (y_pred[object_absence_mask][4] ** 2)).sum()
+        # # X and Y loss
+        # xy_loss = ((y_true[object_presence_mask][:2] - y_pred[object_presence_mask][:2]) ** 2).sum()
+
+        # # Width and Height loss
+        # eps = 1e-6
+        # wh_loss = (torch.sqrt(y_true[object_presence_mask][2:] - y_pred[object_presence_mask][2:]) ** 2).sum()
+
+        # # Confidence loss
+        # confidence_loss = ((y_true[object_presence_mask][4] - y_pred[object_presence_mask][4]) ** 2 +
+        #     lambda_noobj * (y_pred[object_absence_mask][4] ** 2)).sum()

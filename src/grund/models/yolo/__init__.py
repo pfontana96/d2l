@@ -1,6 +1,6 @@
 from typing import Type
 
-from d2l_pep.models.yolo.v1.model import YOLOv1
+from grund.models.yolo.v1.model import YOLOv1
 
 
 _SUPPORTED_VERSIONS = {
