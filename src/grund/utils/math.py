@@ -46,3 +46,21 @@ def compute_iou(bbox_a_xyxy: torch.Tensor, bbox_b_xyxy: torch.Tensor) -> torch.T
     iou[intersections < eps] = 0.0
 
     return iou
+
+
+def limit_row_repeats_torch(tensor: torch.Tensor, max_repeats: int) -> torch.Tensor:
+
+    # 1. Get unique rows and inverse indices
+    _, inverse_indices = torch.unique(tensor, dim=0, return_inverse=True)
+    
+    # 2. Count occurrences per row in order of appearance
+    counts_per_group = torch.zeros_like(inverse_indices)
+    # increment counts as we see each row
+    for i in range(len(inverse_indices)):
+        idx = inverse_indices[i]
+        counts_per_group[i] = (inverse_indices[:i] == idx).sum()
+    
+    # 3. Keep only rows whose order < max_repeats
+    mask = counts_per_group < max_repeats
+
+    return mask

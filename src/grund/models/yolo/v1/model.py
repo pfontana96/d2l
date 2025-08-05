@@ -7,7 +7,7 @@ import torch
 from torch import nn
 import torchvision.transforms.v2 as transforms
 
-from grund.utils.math import xywh2xyxy, compute_iou
+from grund.utils.math import xywh2xyxy, compute_iou, limit_row_repeats_torch
 
 
 class _ConvLayerConfig(BaseModel):
@@ -135,7 +135,7 @@ class YOLOv1(nn.Module):
         return self._net(x).reshape(-1, 7, 7, self._boxes_per_cell * 5 + self._num_classes)
     
     @staticmethod
-    def prediction_to_world(tensor: torch.Tensor, width: int, height: int, B: int, C: int) -> torch.Tensor:
+    def decode(tensor: torch.Tensor, width: int, height: int, B: int, C: int) -> torch.Tensor:
         """
         Interprets the network's output for usage
 
@@ -189,6 +189,69 @@ class YOLOv1(nn.Module):
 
         return output
     
+    @staticmethod
+    def encode(tensor: torch.Tensor, width: int, height: int, B:int, C: int) -> torch.Tensor:
+        """
+        Encodes the bounding boxes and class probabilities into the network's output format.
+
+        Args:
+            tensor (torch.Tensor): Tensor of shape (N, 4 + C) where last dimension stands for the bounding
+                boxes coordinates in defined in the input's image grid and the probabilities of each class, i.e.
+                (x1, y1, x2, y2, P(C1), ..., P(Cc)). and N is the number of detection to encode (at most 49 * B).
+            W (int): Input's image width.
+            H (int): Input's image height.
+            B (int): Number of bounding boxes per cell.
+            C (int): Number of classes
+
+        Returns:
+            encoded_tensor (torch.Tensor): Tensor of shape (7, 7, B * 5 + C) where the last dimension stands for
+                bounding boxes, defined as: x, y, sqrt(w), sqrt(h), P(obj), P(Ci|obj).
+        """
+        assert tensor.ndim == 2, f"Expected input tensor shape to be 2, got '{tensor.ndim}'"
+        assert tensor.shape[0] <= 49 * B, f"Expected input tensor to have at most 49 cell, got {tensor.shape[0]}"
+        assert tensor.shape[1] == 4 + C, f"Expected input tensor to have {4 + C} channels, got {tensor.shape[1]}"
+
+        encoded_tensor = torch.zeros((7, 7, B * 5 + C), device=tensor.device)
+
+        # Compute bounding boxes in YOLOv1 format
+        x1, y1, x2, y2, class_probs = tensor[..., 0], tensor[..., 1], tensor[..., 2], tensor[..., 3], tensor[..., 4:]
+        w = x2 - x1
+        h = y2 - y1
+
+        x_center = (x1 + x2) / 2
+        y_center = (y1 + y2) / 2
+
+        cell_width = width / 7.0
+        cell_height = height / 7.0
+
+        x = x_center / cell_width
+        y = y_center / cell_height
+
+        x_cell_id = torch.floor(x).long()
+        y_cell_id = torch.floor(y).long()
+
+        x_wrt_cell = x - x_cell_id.float()
+        y_wrt_cell = y - y_cell_id.float()
+
+        # Ensure at most 1 boxes per cell
+        mask = limit_row_repeats_torch(torch.stack((x_cell_id, y_cell_id), dim=-1), max_repeats=1)
+
+        x_cell_id = x_cell_id[mask]
+        y_cell_id = y_cell_id[mask]
+        x_wrt_cell = x_wrt_cell[mask]
+        y_wrt_cell = y_wrt_cell[mask]
+        w = torch.sqrt(w[mask] / width)  # network output is square root
+        h = torch.sqrt(h[mask] / height)  # network output is square root
+
+        # Fill the encoded tensor
+        encoded_tensor[y_cell_id, x_cell_id, :5] = torch.stack(
+            (x_wrt_cell, y_wrt_cell, w, h, torch.ones_like(x_wrt_cell)), dim=-1
+        )
+
+        encoded_tensor[y_cell_id, x_cell_id, -C:] = class_probs[mask]     
+
+        return encoded_tensor
+
     @staticmethod
     def loss(
         y_pred: torch.Tensor, y_true: torch.Tensor, lambda_coord: float, lambda_noobj: float,
