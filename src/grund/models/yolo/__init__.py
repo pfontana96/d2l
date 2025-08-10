@@ -1,6 +1,6 @@
 from typing import Type
 
-from grund.models.yolo.v1.model import YOLOv1
+from grund.models.yolo.v1.model import YOLOv1, YOLOv1Params
 
 
 _SUPPORTED_VERSIONS = {

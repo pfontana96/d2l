@@ -1,0 +1,200 @@
+B: 2
+S: 7
+C: 20
+
+layers:
+  - type: conv
+    config:
+      in_channels: 3
+      out_channels: 64
+      kernel_size: 7
+      stride: 2
+      maxpool: true
+
+  - type: conv
+    config:
+      in_channels: 64
+      out_channels: 192
+      kernel_size: 3
+      stride: 1
+      maxpool: true
+
+  - type: conv
+    config:
+      in_channels: 192
+      out_channels: 128
+      kernel_size: 1
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 128
+      out_channels: 256
+      kernel_size: 3
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 256
+      out_channels: 256
+      kernel_size: 1
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 256
+      out_channels: 512
+      kernel_size: 3
+      stride: 1
+      maxpool: true
+
+  # x4
+  - type: conv
+    config:
+      in_channels: 512
+      out_channels: 256
+      kernel_size: 1
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 256
+      out_channels: 512
+      kernel_size: 3
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 512
+      out_channels: 256
+      kernel_size: 1
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 256
+      out_channels: 512
+      kernel_size: 3
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 512
+      out_channels: 256
+      kernel_size: 1
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 256
+      out_channels: 512
+      kernel_size: 3
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 512
+      out_channels: 256
+      kernel_size: 1
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 256
+      out_channels: 512
+      kernel_size: 3
+      stride: 1
+      maxpool: false
+
+  # x1
+  - type: conv
+    config:
+      in_channels: 512
+      out_channels: 512
+      kernel_size: 1
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 512
+      out_channels: 1024
+      kernel_size: 3
+      stride: 1
+      maxpool: true
+
+  # x2
+  - type: conv
+    config:
+      in_channels: 1024
+      out_channels: 512
+      kernel_size: 1
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 512
+      out_channels: 1024
+      kernel_size: 3
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 1024
+      out_channels: 512
+      kernel_size: 1
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 512
+      out_channels: 1024
+      kernel_size: 3
+      stride: 1
+      maxpool: false
+
+  # x1
+  - type: conv
+    config:
+      in_channels: 1024
+      out_channels: 1024
+      kernel_size: 3
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 1024
+      out_channels: 1024
+      kernel_size: 3
+      stride: 2
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 1024
+      out_channels: 1024
+      kernel_size: 3
+      stride: 1
+      maxpool: false
+
+  - type: conv
+    config:
+      in_channels: 1024
+      out_channels: 1024
+      kernel_size: 3
+      stride: 1
+      maxpool: false
