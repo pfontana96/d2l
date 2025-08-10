@@ -171,6 +171,7 @@ class YOLOv1(nn.Module):
         Returns:
             encoded_tensor (torch.Tensor): Tensor of shape (S, S, B * 5 + C) where the last dimension stands for
                 bounding boxes, defined as: x, y, sqrt(w), sqrt(h), P(obj), P(Ci|obj) if as_yolo is True, otherwise
+                bounding boxes are defined as: (x1, y1, x2, y2, 1, P(Ci)) where P(Ci) = P(Ci|obj) * P(obj).
         """
         assert tensor.ndim == 2, f"Expected input tensor shape to be 2, got '{tensor.ndim}'"
         assert tensor.shape[0] <= (params.S * params.S) * params.B, f"Expected input tensor to have at most {params.S * params.S * params.B} detections, got {tensor.shape[0]}"
@@ -248,7 +249,6 @@ class YOLOv1(nn.Module):
         #       confidence = P(obj) * IOU_pred_true
         #       Ci = P(class | obj)
         # At test time, we multiply class conditional probability and the box confidence to get class-based confidence
-        # confidence on Ci = P(class | obj) * box's confidence = P(class | obj) * P(obj) * IOU_pred_true = P(class) * IOU_pred_true
 
         y_true_ = YOLOv1.encode(y_true, params, as_yolo=False)
         y_true_as_yolo = YOLOv1.encode(y_true, params, as_yolo=True)
@@ -257,19 +257,28 @@ class YOLOv1(nn.Module):
         # Get ground truth object mask
         object_ids_y, object_ids_x = torch.where(y_true_[..., 4] > 0)
         bbox_responsible_ids = torch.empty_like(object_ids_y)
-        # object_absence_mask = ~object_presence_mask
+        responsible_bbox = torch.empty((y_true.shape[0], 5), dtype=torch.int, device=params.torch_device)
+
+        mask = torch.zeros((params.S, params.S, params.B * 5 + params.C), dtype=bool, device=params.torch_device)
+        mask[..., -params.C:] = True  # do not mask classes probs
 
         # Compute IOU for predictions to find responsible predictor
-        for i, (pred_bboxes, gt_bboxes) in enumerate(zip(y_pred_decoded[(object_ids_y, object_ids_x)], y_true_[(object_ids_y, object_ids_x)])):
-            bbox_responsible_ids[i] = compute_iou(pred_bboxes[..., :4], gt_bboxes[:4].unsqueeze(dim=0)).argmax(dim=-1)
+        for i, (y, x) in enumerate(zip(object_ids_y, object_ids_x)):
+            bbox_responsible_ids[i] = compute_iou(y_pred_decoded[y, x, :, :4], y_true_[y, x, :4].unsqueeze(dim=0)).argmax(dim=-1)
+            responsible_bbox[i, :] = torch.arange(bbox_responsible_ids[i] * 5, bbox_responsible_ids[i] * 5 + 5, dtype=torch.int, device=params.torch_device)
 
-        squared_error = (y_true_as_yolo[object_ids_y, object_ids_x, :5] - y_pred[object_ids_y, object_ids_x, (bbox_responsible_ids * 5):(bbox_responsible_ids * 5 + 5)]) ** 2
+        mask.index_put_((object_ids_y, object_ids_x, responsible_bbox), torch.tensor(True, device=params.torch_device))
+        squared_error = (y_true_as_yolo - y_pred) ** 2
+        obj_squared = squared_error[mask].reshape(-1, 5 + params.C)
 
         # XYsqrt(w)sqrt(h) loss
-        xywh_loss = squared_error[..., :4].sum()
+        xywh_loss = lambda_coord * obj_squared[..., :4].sum()
 
-        # Confidence loss
-        conf_loss = squared_error[..., 4].sum()
+        # TODO: Confidence losses noobj part
+        conf_loss = obj_squared[..., 4].sum() + lambda_noobj * squared_error[~mask].reshape(-1, 5).sum()  # NOTE: As we set classes to TRue in mask, dim of ~mask is -1,5
 
-        print(f"DEBUG: xywh_loss: {xywh_loss} and conf loss: {conf_loss}")
+        # Classes loss
+        classes_loss = obj_squared[..., -params.C:].sum()
+
+        return xywh_loss + classes_loss + conf_loss
         
