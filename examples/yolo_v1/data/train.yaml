@@ -1,0 +1,2 @@
+# Download dataset from https://image-net.org/challenges/LSVRC/2012/2012-downloads.php
+imagenet_path: /home/pedro/dev/d2l/data/imagenet

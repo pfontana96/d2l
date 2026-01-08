@@ -1,0 +1,59 @@
+# pyproject.toml
+
+[build-system]
+requires = [
+    "wheel",
+    "setuptools>=65"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grund"
+version = "0.1.0"
+description = "A minimal, machine learning toolkit built for learning, clarity, and reusability."
+readme = "README.md"
+authors = [
+    { name = "Pedro Fontana", email = "pedro.fontana.1996@gmail.com" }
+]
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
+requires-python = ">=3.12"
+
+dependencies =[
+    "torch>=2.7.1",
+    "torchvision",
+    "numpy",
+    "pydantic>=2.11",
+    "pyyaml>=6.0",
+    "tqdm"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme = "no-local-version"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "flake8",
+]
+
+release = [
+    "wheel",
+    "twine",
+    "build",
+    "setuptools>=65"
+]
+
+examples = [
+    "fiftyone",
+]
